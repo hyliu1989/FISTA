@@ -86,7 +86,7 @@ class FISTA:
         QL  = f_y + (gradf_y*(x-y)).sum() + 0.5*L*np.linalg.norm(x-y)**2 + g_x # Taylor expansion at y, evaluated at x
         f_x = self._f(x) if not self._gradf_take_cache else self._f(x)[0]
         Fx  = f_x + g_x
-        passed = FX < QL
+        passed = Fx < QL
         return (passed, x, g_x, QL, f_x, Fx)
 
 
@@ -111,10 +111,10 @@ class FISTA:
         in iteration k, there is no variable of subscript (k+1). The subscripbed value of each 
         variable is still the same as that in the FISTA paper. Reordered as follows:
             t[k] = 0.5*( 1+sqrt(1+4*t[k-1]**2) )
-            y[k] = x[k-1] + (t[k-1]-1)/t[k] * (x[k-1]-x[k-2])
+            y[k] = x[k-1] + (t[k-1]-1)/t[k] * (x[k-1]-x[k-2]),   if k > 1
+                   x[0],   if k==1
             x[k] = prox_L(y[k])
-        with initialization t[0] = 1, y[0] = x_init, x[0] = x_init.
-        Notice that when evaluating k=1, y[1] does not depend on x[-1] because t[0]-1 = 0
+        with initialization t[0] = 0, y[0] = x_init, x[0] = x_init.
 
         Arguments:
             x_init:   initial point
@@ -205,7 +205,7 @@ class FISTA:
         it = 0
         x = x_init
         y = x_init
-        t = 1
+        t = 0
         Logging()
 
         with contexttimer.Timer() as timer:
