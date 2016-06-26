@@ -3,6 +3,10 @@
 
 generic FISTA handle
 
+
+Main: class FISTA
+Utilities: class mylist, function initializeLogs
+
 Hsiou-Yuan Liu   hyliu@berkeley.edu
 Sep 2, 2016 
 
@@ -13,9 +17,7 @@ from os.path import exists
 
 
 #####################################
-#
-#   Utility
-#
+## Utility
 #####################################
 class mylist(list):
     """A list to use if not all the logs are expected to keep"""
@@ -94,7 +96,7 @@ class FISTA:
               ls_inc_mode={'stopAtIter':1, 'maxStepOut':2}, ls_inc_coef=0.8, ls_to_print=False,
 
               objLog=None, objLog_inexact=None, objCoeff=1.0,
-              truthCompLog=None, truth=None, truthCompMode=None,
+              truthCompLog=None, truth=None, truthCompMethod=lambda x,tr:np.linalg.norm(x-tr), truthCompCoeff=1.0,
               LLog=None,
               tLog=None,
               xLog=None,
@@ -117,7 +119,7 @@ class FISTA:
         Arguments:
             x_init:   initial point
             max_iter:   maximum iteration for FISTA to run
-            verbose:   control whether to proint standard output. This handle is decoupled from stepout print handle
+            verbose:   control whether to print standard output. This handle is decoupled from stepout print handle
             callback:   callback(x) where x is the estimation at current iteration.
             L:   Lipschitz constant. If not given, line search will be performed.
 
@@ -135,10 +137,10 @@ class FISTA:
             objCoeff:   value to multiply with the objective for logging. [Default=1.0]
                         Example of use, to normalize the objective if set to (1/norm_value).
             truthCompLog:   logging the difference between x and a given `truth` if not None.
-            truth: the given truth
-            truthCompMode['method']:   a function to compute difference. [Default=np.linalg.norm]
-            truthCompMode['coef']:   value to multiply with the difference for logging. [Default=1.0]
-                                     Example of use, to normalize the difference.
+            truth:   the given truth
+            truthCompMethod:   a function to compute difference. [ Default=lambda x,tru: np.linalg.norm(x-tru) ]
+            truthCompCoeff:   value to multiply with the difference for logging. [Default=1.0]
+                               Example of use, to normalize the difference.
             LLog:   logging L if not None
             tLog:   logging t of FISTA iteration if not None
             xLog:   logging x if not None
@@ -154,17 +156,10 @@ class FISTA:
 
         if truthCompLog is not None:
             assert truth is not None
-            itruthCompMode = {'method': np.linalg.norm, 'coef': 1.0}
-            if isinstance(truthCompMode, dict):
-                itruthCompMode.update(truthCompMode)
-            elif truthCompMode is not None:
-                raise ValueError('truthCompMode should be a dictionary')
-            truthCompMode = itruthCompMode
-            del itruthCompMode
-            if len(truthCompMode.keys()) != 2:
-                raise ValueError("truthCompMode can only accept 'method' and 'coef' as keywords")
 
         def Logging():
+            if verbose: print('|', end='')
+
             if objLog is not None:
                 if it == 0 or L_is_given:
                     f_x = self._f(x) if not self._gradf_take_cache else self._f(x)[0]
@@ -172,6 +167,8 @@ class FISTA:
                     objLog.append( objCoeff*(f_x+g_x) )
                 else:
                     objLog.append( objCoeff*Fx )
+                if verbose:  print('objective:%.4e' % objLog[-1], end='| ')
+
             if objLog_inexact is not None:
                 g_y = self._g(y)
                 if it == 0:
@@ -179,23 +176,32 @@ class FISTA:
                 else:
                     f_y_local = f_y
                 objLog_inexact.append( objCoeff*(f_y_local+g_y) )
+                if verbose: print('objective(inexact):%.4e' % objLog_inexact[-1], end='| ')
+
             if truthCompLog is not None:
-                func = truthCompMode['method']
-                coef = truthCompMode['coef']
-                truthCompLog.append( coef*func(x-truth) )
+                truthCompLog.append( truthCompCoeff*truthCompMethod(x,truth) )
+                if verbose: print('truth diff:%.4e' % truthCompLog[-1], end='| ')
+
             if LLog is not None:
                 LLog.append(L)
+                if verbose: print('L:%.4e' % LLog[-1], end='| ')
+
             if tLog is not None:
                 tLog.append(t)
+                if verbose: print('t:%.4e' % tLog[-1], end='| ')
+
             if xLog is not None:
                 xLog.append(x)
+
             if timeLog is not None:
-                if it==0:
-                    timeLog.append(0.0)
-                else:
-                    timeLog.append(timer.elapsed)
+                timeLog.append(0.0 if it==0 else timer.elapsed)
+                if verbose: print('time:%.1f' % timeLog[-1], end='| ' )
+            if verbose: print('')
+
 
         # zeroth iteration, prepartion work
+        if ls_to_print: print('='*15, 'initialize', it, '='*15)
+        elif verbose:   print('initialize ', end='')
         it = 0
         x = x_init
         y = x_init
@@ -251,14 +257,14 @@ class FISTA:
                                 break
                 
                 Logging()
-                if verbose:
-                    print('objective: %.4e' % objLog[-1], end=' || ')
-                    print('truth diff: %.4e' % truthCompLog[-1], end=' || ')
-                    print('time %.1f sec' % timer.elapsed)
                 if callback is not None:
                     callback(x)
                 if interruptionFilename and exists(interruptionFilename): # external interrupation
                     break
+
+        # return handling
+        objval = f_x if 'f_x' in locals() else f_y
+        return x, objval
 
 
 
