@@ -103,6 +103,7 @@ class FISTA:
               timeLog=None,
 
               interruptionFilename=None,
+              prevLastIter=None
               ):
         """
         Implementation of FISTA
@@ -145,6 +146,12 @@ class FISTA:
             tLog:   logging t of FISTA iteration if not None
             xLog:   logging x if not None
             timeLog:   logging accumulated elapsed time
+
+            [abortion/continuation]
+            interruptionFilename:   if file exists, the iteration stops
+            prevLastIter:   if None, current call is a new start.
+                            Otherwise it should be an integer > 1, meaning the last iteration before current call.
+                            Log should be provided to run the continuation.
         """
         ## function call configuration
         L_is_given = (L is not None)
@@ -199,17 +206,36 @@ class FISTA:
             if verbose: print('')
 
 
-        # zeroth iteration, prepartion work
-        if ls_to_print: print('='*15, 'initialize', it, '='*15)
-        elif verbose:   print('initialize ', end='')
-        it = 0
-        x = x_init
-        y = x_init
-        t = 0
-        Logging()
+        if prevLastIter is None:
+            # new start
+            # zeroth iteration, prepartion work
+            if ls_to_print: print('='*15, 'initialize', it, '='*15)
+            elif verbose:   print('initialize ', end='')
+            it = 0
+            x = x_init
+            y = x_init
+            t = 0
+            Logging()
+            it_beg = 1
+        else:
+            # resume from previous run
+            # resuming preparation
+            assert prevLastIter > 1
+            x_old = xLog[-2]
+            x = xLog[-1]
+            t = 0
+            for _ in range(prevLastIter): 
+                t = 0.5*(1+np.sqrt(1+4*t**2))
+            if tLog is not None:
+                assert tLog[-1] == t
+            if LLog is not None:
+                L = LLog[-1]
+            it_beg = prevLastIter+1
+            
+
 
         with contexttimer.Timer() as timer:
-            for it in range(1, max_iter+1):
+            for it in range(it_beg, it_beg + max_iter):
                 if ls_to_print: print('='*15, 'iter', it, '='*15)
                 elif verbose:   print('iter % 4d: ' % it, end='')
 
@@ -236,7 +262,7 @@ class FISTA:
                     ## line search
                     # reducing the step size
                     while True:
-                        passed, x, g_x, QL, f_x, Fx = self._lineSearchProcedure(L, y, f_y, gradf_y)
+                        passed, x, g_x, QL, f_x, Fx = self._lineSearchProcedure(L, y, f_y, gradf_y) # assign variables for Logging()
                         if ls_to_print:
                             print('reducing step size:       QL=%.8E,     Fx=%.8E,     L=%.4E' %(QL, Fx, L), flush=True)
                         if passed:
@@ -250,7 +276,7 @@ class FISTA:
                             if ls_to_print:
                                 print('increasing step size: QL_try=%.8E, Fx_try=%.8E, L_try=%.4E' %(QL_try, Fx_try, L_try), end='')
                             if passed:
-                                L, x, g_x, QL, f_x, Fx = L_try, x_try, g_x_try, QL_try, f_x_try, Fx_try
+                                L, x, g_x, QL, f_x, Fx = L_try, x_try, g_x_try, QL_try, f_x_try, Fx_try # assign variables for Logging()
                                 if ls_to_print: print('')
                             else:
                                 if ls_to_print: print(' (break! use previous L)')
