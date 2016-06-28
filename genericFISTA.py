@@ -16,9 +16,9 @@ import contexttimer
 from os.path import exists
 
 
-#####################################
-## Utility
-#####################################
+###########
+# Utility #
+###########
 class mylist(list):
     """A list to use if not all the logs are expected to keep"""
     def __init__(self, noneEmptyLength=10):
@@ -49,8 +49,88 @@ def initializeLogs(to_log_all_x, num_x=0):
                 timeLog=[])
 
 
+def getPlotlyCallback(Logs_subset, x_inspections=[], charts_per_row=2):
+    """
+    A example callback function that will update the plotly offline plots showing 
+    any non-None elements in the dictionary Logs_subset.
+
+    x_inspections: a list of (name, callable) pairs that callables take x as the only argument and
+                   the return value of each callable is to make a chart.
+    """
+    import plotly.offline as py
+    import plotly.graph_objs as go
+    import plotly.tools as tls
+    from IPython.display import clear_output
+
+    assert py.offline.__PLOTLY_OFFLINE_INITIALIZED and tls._ipython_imported
+
+    scatter_objs_config = []
+    axis_cnt = 0
+
+    # count standard charts
+    toLog = lambda log_name: (log_name in Logs_subset.keys()) and (Logs_subset[log_name] is not None)
+    standardLogs =      ['objLog',    'objLog_inexact', 'truthCompLog',    'LLog',       'tLog',      'timeLog']
+    standardLogTitles = ['objective', 'objective',      'diff from truth', 'L (FISTA)',  't (FISTA)', 'elapsed time']
+    for log_name, title in zip(standardLogs,standardLogTitles):
+        if toLog(log_name):
+            axis_cnt += 1
+            if log_name is 'objLog_inexact' and toLog('objLog'):
+                axis_cnt -= 1 # plot in objLog's axis
+            scatter_objs_config.append( dict(
+                title = title,
+                name  = log_name,
+                xaxis = 'x%d' % axis_cnt, 
+                yaxis = 'y%d' % axis_cnt,
+                record = Logs_subset[log_name],
+                record_need_update=False,
+                record_update_callable=None,
+                )
+            )
+    # count user specified charts
+    for name, inspection in x_inspections:
+        axis_cnt += 1
+        scatter_objs_config.append(dict(
+            title = name,
+            name  = name,
+            xaxis = 'x%d' % axis_cnt, 
+            yaxis = 'y%d' % axis_cnt,
+            record = [],
+            record_need_update=True,
+            record_update_callable=inspection,
+            )
+        )
+
+    if len(scatter_objs_config) == 0:
+        raise ValueError('Nothing to display')
+
+    # generate subplot figure object
+    numRows = (axis_cnt-1)//charts_per_row + 1
+    subplotTitles = [conf['title'] for conf in scatter_objs_config]
+    if subplotTitles[0] == 'objective' and subplotTitles[1] == 'objective':
+        subplotTitles.pop(0) # pop because they share the same axis
+    fig = tls.make_subplots(rows=numRows, cols=charts_per_row, subplot_titles=subplotTitles)
+    fig['layout'].update(width=900, height=360*numRows)
+    
+    # fill subplot object
+    for conf in scatter_objs_config:
+        fig['data'].append(go.Scatter(y=conf['record'], xaxis=conf['xaxis'], yaxis=conf['yaxis'], name=conf['name']))
+
+    def callback(x):
+        clear_output(wait=True)
+        for i, conf in enumerate(scatter_objs_config):
+            if conf['record_need_update']:
+                func = conf['record_update_callable']
+                conf['record'].append(func(x))
+        py.iplot(fig)
+
+    return callback
 
 
+
+
+##################
+# Main algorithm #
+##################
 class FISTA:
     """
     FISTA solver class to handle the procedures in each FISTA iterations
@@ -164,6 +244,9 @@ class FISTA:
         if truthCompLog is not None:
             assert truth is not None
 
+        if max_iter == 0:
+            raise ValueError('max_iter cannot be zero')
+
         def Logging():
             if verbose: print('|', end='')
 
@@ -203,7 +286,11 @@ class FISTA:
             if timeLog is not None:
                 timeLog.append(0.0 if it==0 else timer.elapsed)
                 if verbose: print('time:%.1f' % timeLog[-1], end='| ' )
+            
             if verbose: print('')
+
+            if callback is not None:
+                    callback(x)
 
 
         if prevLastIter is None:
@@ -283,26 +370,12 @@ class FISTA:
                                 break
                 
                 Logging()
-                if callback is not None:
-                    callback(x)
                 if interruptionFilename and exists(interruptionFilename): # external interrupation
                     break
 
         # return handling
         objval = f_x if 'f_x' in locals() else f_y
         return x, objval
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
