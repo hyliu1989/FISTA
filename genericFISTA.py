@@ -40,8 +40,10 @@ def initializeLogs(to_log_all_x, num_x=0):
     """
     if not to_log_all_x and num_x is 0:
         raise ValueError('num_x should be at least 1')
-    return dict(objLog=None, 
+    return dict(objLog=None,
+                objFLog=None,
                 objLog_inexact=[],
+                objFLog_inexact=[],
                 truthCompLog=None,
                 LLog=[],
                 tLog=[],
@@ -69,13 +71,17 @@ def getPlotlyCallback(Logs_subset, x_inspections=[], charts_per_row=2):
 
     # count standard charts
     toLog = lambda log_name: (log_name in Logs_subset.keys()) and (Logs_subset[log_name] is not None)
-    standardLogs =      ['objLog',    'objLog_inexact', 'truthCompLog',    'LLog',       'tLog',      'timeLog']
-    standardLogTitles = ['objective', 'objective',      'diff from truth', 'L (FISTA)',  't (FISTA)', 'elapsed time']
+    standardLogs =      ['objLog',    'objLog_inexact', 'objFLog',                  'objFLog_inexact']
+    standardLogTitles = ['objective', 'objective',      'smooth part of objective', 'smooth part of objective']
+    standardLogs +=      ['truthCompLog',    'LLog',       'tLog',      'timeLog'     ]
+    standardLogTitles += ['diff from truth', 'L (FISTA)',  't (FISTA)', 'elapsed time']
     for log_name, title in zip(standardLogs,standardLogTitles):
         if toLog(log_name):
             axis_cnt += 1
             if log_name is 'objLog_inexact' and toLog('objLog'):
                 axis_cnt -= 1 # plot in objLog's axis
+            if log_name is 'objFLog_inexact' and toLog('objFLog'):
+                axis_cnt -= 1 # plot in objFLog's axis
             scatter_objs_config.append( dict(
                 title = title,
                 name  = log_name,
@@ -106,8 +112,10 @@ def getPlotlyCallback(Logs_subset, x_inspections=[], charts_per_row=2):
     # generate subplot figure object
     numRows = (axis_cnt-1)//charts_per_row + 1
     subplotTitles = [conf['title'] for conf in scatter_objs_config]
-    if subplotTitles[0] == 'objective' and subplotTitles[1] == 'objective':
-        subplotTitles.pop(0) # pop because they share the same axis
+    if subplotTitles.count('objective') == 2:
+        subplotTitles.remove('objective') # remove because they share the same axis
+    if subplotTitles.count('smooth part of objective') == 2:
+        subplotTitles.remove('smooth part of objective') # remove because they share the same axis
     fig = tls.make_subplots(rows=numRows, cols=charts_per_row, subplot_titles=subplotTitles)
     fig['layout'].update(width=900, height=360*numRows)
     
@@ -176,6 +184,7 @@ class FISTA:
               ls_inc_mode={'stopAtIter':1, 'maxStepOut':2}, ls_inc_coef=0.8, ls_to_print=False,
 
               objLog=None, objLog_inexact=None, objCoeff=1.0,
+              objFLog=None, objFLog_inexact=None,
               truthCompLog=None, truth=None, truthCompMethod=lambda x,tr:np.linalg.norm(x-tr), truthCompCoeff=1.0,
               LLog=None,
               tLog=None,
@@ -214,7 +223,9 @@ class FISTA:
 
             [log related arguments]  (all the logs should have `.append()` method)
             objLog:   logging the objective if not None
-            objLog_inexact:   using y to evaluate objective if not None.
+            objFLog:   logging the smooth part of the objective if not None
+            objLog_inexact:   using y to evaluate the objective if not None.
+            objFLog_inexact:   using y to evaluate the smooth part of the objective if not None
             objCoeff:   value to multiply with the objective for logging. [Default=1.0]
                         Example of use, to normalize the objective if set to (1/norm_value).
             truthCompLog:   logging the difference between x and a given `truth` if not None.
@@ -248,46 +259,56 @@ class FISTA:
             raise ValueError('max_iter cannot be zero')
 
         def Logging():
-            if verbose: print('|', end='')
+            to_print = '|'
 
-            if objLog is not None:
+            if objLog is not None or objFLog is not None:
                 if it == 0 or L_is_given:
-                    f_x = self._f(x) if not self._gradf_take_cache else self._f(x)[0]
-                    g_x = self._g(x)
-                    objLog.append( objCoeff*(f_x+g_x) )
+                    f_x_loc = self._f(x) if not self._gradf_take_cache else self._f(x)[0]
+                    g_x_loc = self._g(x) if objLog is not None else 0.0
                 else:
-                    objLog.append( objCoeff*Fx )
-                if verbose:  print('objective:%.4e' % objLog[-1], end='| ')
+                    f_x_loc = f_x
+                    g_x_loc = g_x
+                if objLog is not None:  
+                    objLog.append(  objCoeff*(f_x_loc+g_x_loc) )
+                    to_print += 'obj:%.4e| ' % objLog[-1]
+                if objFLog is not None: 
+                    objFLog.append( objCoeff*(f_x_loc) )
+                    to_print += 'smooth obj:%.4e| ' % objLog[-1]
 
-            if objLog_inexact is not None:
-                g_y = self._g(y)
+            if objLog_inexact is not None or objFLog_inexact is not None:
+                g_y_loc = self._g(y) if objLog_inexact is not None else 0.0
                 if it == 0:
-                    f_y_local = self._f(y) if not self._gradf_take_cache else self._f(y)[0]
+                    f_y_loc = self._f(y) if not self._gradf_take_cache else self._f(y)[0]
                 else:
-                    f_y_local = f_y
-                objLog_inexact.append( objCoeff*(f_y_local+g_y) )
-                if verbose: print('objective(inexact):%.4e' % objLog_inexact[-1], end='| ')
+                    f_y_loc = f_y
+                if objLog_inexact is not None:
+                    objLog_inexact.append(  objCoeff*(f_y_loc+g_y_loc) )
+                    to_print += 'obj(inexact):%.4e| ' % objLog_inexact[-1]
+                if objFLog_inexact is not None:
+                    objFLog_inexact.append( objCoeff*(f_y_loc) )
+                    to_print += 'smooth obj(inexact):%.4e| ' % objFLog_inexact[-1]
 
             if truthCompLog is not None:
                 truthCompLog.append( truthCompCoeff*truthCompMethod(x,truth) )
-                if verbose: print('truth diff:%.4e' % truthCompLog[-1], end='| ')
+                to_print += 'truth diff:%.4e| ' % truthCompLog[-1]
 
             if LLog is not None:
                 LLog.append(L)
-                if verbose: print('L:%.4e' % LLog[-1], end='| ')
+                to_print += 'L:%.4e| ' % LLog[-1]
 
             if tLog is not None:
                 tLog.append(t)
-                if verbose: print('t:%.4e' % tLog[-1], end='| ')
+                to_print += 't:%.4e| ' % tLog[-1]
 
             if xLog is not None:
                 xLog.append(x)
 
             if timeLog is not None:
                 timeLog.append(0.0 if it==0 else timer.elapsed)
-                if verbose: print('time:%.1f' % timeLog[-1], end='| ' )
+                to_print += 'time:%.1f| ' % timeLog[-1]
             
-            if verbose: print('')
+            if verbose: 
+                print(to_print)
 
             if callback is not None:
                     callback(x)
