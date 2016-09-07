@@ -317,9 +317,9 @@ class FISTA:
         if prevLastIter is None:
             # new start
             # zeroth iteration, prepartion work
+            it = 0
             if ls_to_print: print('='*15, 'initialize', it, '='*15)
             elif verbose:   print('initialize ', end='')
-            it = 0
             x = x_init
             y = x_init
             t = 0
@@ -339,6 +339,7 @@ class FISTA:
             if LLog is not None:
                 L = LLog[-1]
             it_beg = prevLastIter+1
+            print('resume previous run with extra max_iter(%d) runs' % max_iter)
             
 
 
