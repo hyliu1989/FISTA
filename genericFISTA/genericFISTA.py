@@ -176,7 +176,7 @@ class FISTA:
         QL  = f_y + (gradf_y*(x-y)).sum() + 0.5*L*np.linalg.norm(x-y)**2 + g_x # Taylor expansion at y, evaluated at x
         f_x = self._f(x) if not self._gradf_take_cache else self._f(x)[0]
         Fx  = f_x + g_x
-        passed = Fx < QL
+        passed = Fx <= QL
         return (passed, x, g_x, QL, f_x, Fx)
 
 
