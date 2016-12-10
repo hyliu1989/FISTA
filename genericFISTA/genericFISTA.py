@@ -32,11 +32,13 @@ class mylist(list):
 
 def initializeLogs(to_log_all_x, num_x=0):
     """
-    the returned object can be dereferenced in calling FISTA.solve
+    Initialize logs to values we are interested in. Users must specify if to log x at all iterations (to_log_all_x)
+
+    The returned object can be dereferenced in calling FISTA.solve
     E.g. 
         logs = initializeLogs()
         fista_handle = FISTA(f, gradf, g, proxg)
-        fista_handle.solve( x_init=something, **logs )
+        fista_handle.solve(x_init=something, **logs)
     """
     if not to_log_all_x and num_x is 0:
         raise ValueError('num_x should be at least 1')
@@ -308,7 +310,7 @@ class FISTA:
                 to_print += 'time:%.1f| ' % timeLog[-1]
             
             if verbose: 
-                print(to_print)
+                print(to_print, flush=True)
 
             if callback is not None:
                     callback(x)
