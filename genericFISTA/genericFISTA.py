@@ -193,6 +193,7 @@ class FISTA:
               xLog=None,
               timeLog=None,
 
+              flagRestart=False,
               interruptionFilename=None,
               prevLastIter=None
               ):
@@ -245,6 +246,10 @@ class FISTA:
             prevLastIter:   if None, current call is a new start.
                             Otherwise it should be an integer > 1, meaning the last iteration before current call.
                             Log should be provided to run the continuation.
+
+            [flags]
+            flagRestart:   if True, restart the acceleration whenever the objective start to go upward. In this 
+                           case, tLog and objLog_inexact are required.
         """
         ## function call configuration
         L_is_given = (L is not None)
@@ -259,6 +264,10 @@ class FISTA:
 
         if max_iter == 0:
             raise ValueError('max_iter cannot be zero')
+
+        if flagRestart:
+            assert tLog is not None, 'tLog is required for the restart of FISTA.'
+            assert objLog_inexact is not None, 'objLog_inexact is required for the restart of FISTA.'
 
         def Logging():
             to_print = '|'
@@ -317,8 +326,8 @@ class FISTA:
 
 
         if prevLastIter is None:
-            # new start
-            # zeroth iteration, prepartion work
+            ## new start
+            ## zeroth iteration, prepartion work
             it = 0
             if ls_to_print: print('='*15, 'initialize', it, '='*15)
             elif verbose:   print('initialize ', end='')
@@ -328,8 +337,8 @@ class FISTA:
             Logging()
             it_beg = 1
         else:
-            # resume from previous run
-            # resuming preparation
+            ## resume from previous run
+            ## resuming preparation
             assert prevLastIter > 1
             x_old = xLog[-2]
             x = xLog[-1]
@@ -337,7 +346,12 @@ class FISTA:
             for _ in range(prevLastIter): 
                 t = 0.5*(1+np.sqrt(1+4*t**2))
             if tLog is not None:
-                assert tLog[-1] == t
+                if tLog[-1] == t:
+                    pass # Good! Things matched
+                else:
+                    if not flagRestart:
+                        print('previous run might have turned on flagRestart so the t is not a usual FISTA t at this iteration.')
+                # assert tLog[-1] == t  # comment out due to incompatibility to the restart feature
             if LLog is not None:
                 L = LLog[-1]
             it_beg = prevLastIter+1
@@ -358,13 +372,23 @@ class FISTA:
                 t = 0.5*(1+np.sqrt(1+4*t_old**2))
                 y = x_old if (it==1) else x_old + ((t_old-1)/t)*(x_old-x_oldold)
 
-                ### evaluate f(y) and gradf(y)
+                ### evaluate f(y) and gradf(y), with a restart check in between
                 if not self._gradf_take_cache:
                     f_y = self._f(y)
-                    gradf_y = self._gradf(y)
                 else:
                     f_y, cache = self._f(y)
+
+                if flagRestart is True and (f_y > objLog_inexact[-1]): # the later one is a restart condition.
+                    # TODO: do the restart requiring things
+                    # An Adaptive APG method and its Homotopy Continuation for Sparse Optimization
+                    # http://jmlr.org/proceedings/papers/v32/lin14.pdf
+                    pass
+
+                if not self._gradf_take_cache:
+                    gradf_y = self._gradf(y)
+                else:
                     gradf_y = self._gradf(y,cache)
+                
 
                 ### Determining L and compute x = prox_L(y)
                 if L_is_given:
