@@ -173,7 +173,7 @@ class FISTA:
         """Line search procedures specified in FISTA paper"""
         x   = self._proxg(1/L, y-1/L*gradf_y)
         g_x = self._g(x)
-        QL  = f_y + (gradf_y*(x-y)).sum() + 0.5*L*np.linalg.norm(x-y)**2 + g_x # Taylor expansion at y, evaluated at x
+        QL  = f_y + (gradf_y*(x-y)).real.sum() + 0.5*L*np.linalg.norm(x-y)**2 + g_x # Taylor expansion at y, evaluated at x
         f_x = self._f(x) if not self._gradf_take_cache else self._f(x)[0]
         Fx  = f_x + g_x
         passed = Fx <= QL
