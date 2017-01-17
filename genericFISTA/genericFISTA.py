@@ -285,7 +285,7 @@ class FISTA:
                     to_print += 'obj:%.4e| ' % objLog[-1]
                 if objFLog is not None: 
                     objFLog.append( objCoeff*(f_x_loc) )
-                    to_print += 'smooth obj:%.4e| ' % objLog[-1]
+                    to_print += 'smooth obj:%.4e| ' % objFLog[-1]
 
             if objLog_inexact is not None or objFLog_inexact is not None:
                 g_y_loc = self._g(y) if objLog_inexact is not None else 0.0
