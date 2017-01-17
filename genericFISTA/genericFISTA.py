@@ -219,8 +219,9 @@ class FISTA:
             [line search related arguments]  (used only when L is None)
             L0:   start point of the search. L is impedence, so a greater L means a smaller step
             ls_red_coef:   L *= ls_red_coef to increase the impedence L
-            ls_inc_mode:   carry out the increasing-step line search in iterations below ls_inc_mode['stopAtIter']
-                           carry out at most ls_inc_mode['maxStepOut'] for each search
+            ls_inc_mode:   default {'stopAtIter':1, 'maxStepOut':2}
+                           carry out the increasing-step line search in iterations below ls_inc_mode['stopAtIter'].
+                           carry out at most ls_inc_mode['maxStepOut'] for each search.
             ls_inc_coef:   L *= ls_inc_coef to decrease the impedence L
             ls_to_print:   stepout printing handle
 
