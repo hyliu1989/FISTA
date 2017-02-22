@@ -145,7 +145,7 @@ class FISTA:
     """
     FISTA solver class to handle the procedures in each FISTA iterations
     """
-    def __init__(self, f, gradf, g, proxg, gradf_take_cache=False):
+    def __init__(self, f, gradf, g, proxg, gradf_take_cache=False, f_gradf=None):
         """
         Initializer
 
@@ -154,6 +154,8 @@ class FISTA:
         gradf(x) or gradf(x, cache): 
               The gradient of f
               Returns an array of the shape of x
+        f_gradf: the combined function which returns (f(x), gradf(x)) as a tuple
+
         g(x): the other part of the objective function, whose proximal operator is cheap to compute
               IMPORTANT NOTE: g itself should contain a regularization parameter. E.g. if using L1 norm to regularize,
                               g(x) = mu*||x||_1
@@ -165,6 +167,7 @@ class FISTA:
         assert hasattr(f, '__call__') and hasattr(gradf, '__call__') and hasattr(g, '__call__') and hasattr(proxg, '__call__') 
         self._f = f
         self._gradf = gradf
+        self._f_gradf = f_gradf
         self._g = g
         self._proxg = proxg
         self._gradf_take_cache = gradf_take_cache
@@ -267,9 +270,19 @@ class FISTA:
         if max_iter == 0:
             raise ValueError('max_iter cannot be zero')
 
-        if flagRestart:
+        if not flagRestart:
+            if hasattr(self._f_gradf, '__call__'):
+                combinedCall = True
+                print('Using the combined call for f and gradf')
+            else:
+                combinedCall = False
+        else: # with restart feature
+            raise NotImplementedError('')
             assert tLog is not None, 'tLog is required for the restart of FISTA.'
             assert objLog_inexact is not None, 'objLog_inexact is required for the restart of FISTA.'
+            assert hasattr(self._f, '__call__') 
+            assert hasattr(self._gradf, '__call__')
+            
 
         def Logging():
             to_print = '|'
@@ -374,22 +387,32 @@ class FISTA:
                 t = 0.5*(1+np.sqrt(1+4*t_old**2))
                 y = x_old if (it==1) else x_old + ((t_old-1)/t)*(x_old-x_oldold)
 
-                ### evaluate f(y) and gradf(y), with a restart check in between
-                if not self._gradf_take_cache:
-                    f_y = self._f(y)
-                else:
-                    f_y, cache = self._f(y)
+                ### evaluate f(y) and gradf(y), with optional restart feature
+                if not flagRestart:
+                    if combinedCall:
+                        f_y, gradf_y = self._f_gradf(y)
+                    elif not self._gradf_take_cache:
+                        f_y = self._f(y)
+                        gradf_y = self._gradf(y)
+                    else:
+                        f_y, cache = self._f(y)
+                        gradf_y = self._gradf(y,cache)
+                else: # with restart feature
+                    if not self._gradf_take_cache:
+                        f_y = self._f(y)
+                    else:
+                        f_y, cache = self._f(y)
 
-                if flagRestart is True and (f_y > objLog_inexact[-1]): # the later one is a restart condition.
-                    # TODO: do the restart requiring things
-                    # An Adaptive APG method and its Homotopy Continuation for Sparse Optimization
-                    # http://jmlr.org/proceedings/papers/v32/lin14.pdf
-                    pass
+                    if f_y > objLog_inexact[-1]: # the later one is a restart condition.
+                        # TODO: do the restart requiring things
+                        # An Adaptive APG method and its Homotopy Continuation for Sparse Optimization
+                        # http://jmlr.org/proceedings/papers/v32/lin14.pdf
+                        pass
 
-                if not self._gradf_take_cache:
-                    gradf_y = self._gradf(y)
-                else:
-                    gradf_y = self._gradf(y,cache)
+                    if not self._gradf_take_cache:
+                        gradf_y = self._gradf(y)
+                    else:
+                        gradf_y = self._gradf(y,cache)
                 
 
                 ### Determining L and compute x = prox_L(y)

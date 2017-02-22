@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup( name             = 'generic FISTA'
-     , version          = '1.1.0'
+     , version          = '1.2.0'
      , description      = 'implementation of FISTA algorithms'
      , keywords         = [ 'accelerated gradient descent', 'fast gradient descent']
      , author           = 'Hsiou-Yuan Liu'
