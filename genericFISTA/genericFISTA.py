@@ -240,7 +240,8 @@ class FISTA:
             LLog:   logging L if not None
             tLog:   logging t of FISTA iteration if not None
             xLog:   logging x if not None
-            timeLog:   logging accumulated elapsed time
+            timeLog:   logging accumulated elapsed time (wall clock). This includes the time spent in logging 
+                       process, and it makes huge difference to evaluate extra f(x) when L is given.
 
             [abortion/continuation]
             interruptionFilename:   if file exists, the iteration stops
