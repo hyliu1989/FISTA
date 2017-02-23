@@ -177,10 +177,13 @@ class FISTA:
         x   = self._proxg(1/L, y-1/L*gradf_y)
         g_x = self._g(x)
         QL  = f_y + (gradf_y.conj()*(x-y)).real.sum() + 0.5*L*np.linalg.norm(x-y)**2 + g_x # Taylor expansion at y, evaluated at x
-        f_x = self._f(x) if not self._gradf_take_cache else self._f(x)[0]
+        if not self._gradf_take_cache:
+            f_x, cache_fx = self._f(x), None
+        else:
+            f_x, cache_fx = self._f(x)
         Fx  = f_x + g_x
         passed = Fx <= QL
-        return (passed, x, g_x, QL, f_x, Fx)
+        return (passed, x, g_x, QL, f_x, Fx, cache_fx) # usually cache_fx is not used unless we have momentum-restart
 
 
     def solve(self, x_init, max_iter=20, verbose=True, callback=None,
@@ -253,8 +256,8 @@ class FISTA:
                             Log should be provided to run the continuation.
 
             [flags]
-            flagRestart:   if True, restart the acceleration whenever the objective start to go upward. In this 
-                           case, tLog and objLog_inexact are required.
+            flagRestart:   if True, restart the acceleration (momentum restart) whenever the objective start to go 
+                           upward. In this case, tLog and objLog_inexact are required.
         """
         ## function call configuration
         L_is_given = (L is not None)
@@ -277,9 +280,8 @@ class FISTA:
             else:
                 combinedCall = False
         else: # with restart feature
-            raise NotImplementedError('')
             assert tLog is not None, 'tLog is required for the restart of FISTA.'
-            assert objLog_inexact is not None, 'objLog_inexact is required for the restart of FISTA.'
+            assert objFLog_inexact is not None, 'objFLog_inexact is required for the restart of FISTA.'
             assert hasattr(self._f, '__call__') 
             assert hasattr(self._gradf, '__call__')
             
@@ -378,6 +380,7 @@ class FISTA:
             for it in range(it_beg, it_beg + max_iter):
                 if ls_to_print: print('='*15, 'iter', it, '='*15)
                 elif verbose:   print('iter % 4d: ' % it, end='')
+                to_print_momentum_restart_happend = False
 
                 #### ACTUAL FISTA PART
                 x_oldold = 0 if (it==1) else x_old
@@ -387,7 +390,17 @@ class FISTA:
                 t = 0.5*(1+np.sqrt(1+4*t_old**2))
                 y = x_old if (it==1) else x_old + ((t_old-1)/t)*(x_old-x_oldold)
 
-                ### evaluate f(y) and gradf(y), with optional restart feature
+                ### evaluate f(y) and gradf(y), with optional momentum-restart feature
+                # Paper for momentum-restart: Adaptive Restart for Accelerated Gradient Schemes 
+                # (https://statweb.stanford.edu/~candes/papers/adap_restart_paper.pdf)
+                # Flow without momentum-restart
+                #     f_y = f(y)
+                #     gradf_y = gradf(y)
+                # Flow with momentum-restart
+                #     f_y = f(y)
+                #     if f_y > f(y_old): # yes, it's f(y_old), not f(x_old), which is different from the paper
+                #          y = x_old
+                #          f_y = f(y)
                 if not flagRestart:
                     if combinedCall:
                         f_y, gradf_y = self._f_gradf(y)
@@ -397,18 +410,29 @@ class FISTA:
                     else:
                         f_y, cache = self._f(y)
                         gradf_y = self._gradf(y,cache)
-                else: # with restart feature
+                else: # with momentum-restart feature
+                    # evaluate f(y)
                     if not self._gradf_take_cache:
                         f_y = self._f(y)
                     else:
                         f_y, cache = self._f(y)
 
-                    if f_y > objLog_inexact[-1]: # the later one is a restart condition.
-                        # TODO: do the restart requiring things
-                        # An Adaptive APG method and its Homotopy Continuation for Sparse Optimization
-                        # http://jmlr.org/proceedings/papers/v32/lin14.pdf
-                        pass
+                    # evaluate restart condition
+                    if objCoeff*f_y > objFLog_inexact[-1]: # momentum-restart condition
+                        t = 1
+                        y = x_old
+                        if not L_is_given: # means that 'f_x' and 'cache_fx_usedInNextIter' are in locals()
+                            f_y = f_x
+                            cache = cache_fx_usedInNextIter # using cache_fx_usedInNextIter from last iteration
+                        else:
+                            if not self._gradf_take_cache:
+                                f_y = self._f(y)
+                            else:
+                                f_y, cache = self._f(y)
+                        if verbose:
+                            to_print_momentum_restart_happend = True
 
+                    # evaluate gradf(y)
                     if not self._gradf_take_cache:
                         gradf_y = self._gradf(y)
                     else:
@@ -422,7 +446,7 @@ class FISTA:
                     ## line search
                     # reducing the step size
                     while True:
-                        passed, x, g_x, QL, f_x, Fx = self._lineSearchProcedure(L, y, f_y, gradf_y) # assign variables for Logging()
+                        passed, x, g_x, QL, f_x, Fx, cache_fx_usedInNextIter = self._lineSearchProcedure(L, y, f_y, gradf_y) # assign variables for Logging()
                         if ls_to_print:
                             print('reducing step size:       QL=%.8E,     Fx=%.8E,     L=%.4E' %(QL, Fx, L), flush=True)
                         if passed:
@@ -432,7 +456,7 @@ class FISTA:
                     if ls_inc_mode['stopAtIter'] >= it:
                         for _ in range(ls_inc_mode['maxStepOut']):
                             L_try = L * ls_inc_coef
-                            passed, x_try, g_x_try, QL_try, f_x_try, Fx_try = self._lineSearchProcedure(L_try, y, f_y, gradf_y)
+                            passed, x_try, g_x_try, QL_try, f_x_try, Fx_try, cache_fx_usedInNextIter = self._lineSearchProcedure(L_try, y, f_y, gradf_y)
                             if ls_to_print:
                                 print('increasing step size: QL_try=%.8E, Fx_try=%.8E, L_try=%.4E' %(QL_try, Fx_try, L_try), end='')
                             if passed:
@@ -443,6 +467,8 @@ class FISTA:
                                 break
                 
                 Logging()
+                if to_print_momentum_restart_happend:
+                    print('Momentum restart happens at iter %d.' % (it,) )
                 if interruptionFilename and exists(interruptionFilename): # external interrupation
                     break
 
