@@ -170,17 +170,17 @@ class FISTA:
         self._f_gradf = f_gradf
         self._g = g
         self._proxg = proxg
-        self._gradf_take_cache = gradf_take_cache
+        #self._gradf_take_cache = gradf_take_cache
+        if not gradf_take_cache: # unify the calling protocol to be always-take-cache
+            self._f = lambda x: (f(x), None)
+            self._gradf = lambda x, cache: gradf(x)
 
     def _lineSearchProcedure(self, L, y, f_y, gradf_y):
         """Line search procedures specified in FISTA paper"""
         x   = self._proxg(1/L, y-1/L*gradf_y)
         g_x = self._g(x)
         QL  = f_y + (gradf_y.conj()*(x-y)).real.sum() + 0.5*L*np.linalg.norm(x-y)**2 + g_x # Taylor expansion at y, evaluated at x
-        if not self._gradf_take_cache:
-            f_x, cache_fx = self._f(x), None
-        else:
-            f_x, cache_fx = self._f(x)
+        f_x, cache_fx = self._f(x)
         Fx  = f_x + g_x
         passed = Fx <= QL
         return (passed, x, g_x, QL, f_x, Fx, cache_fx) # usually cache_fx is not used unless we have momentum-restart
@@ -291,7 +291,7 @@ class FISTA:
 
             if objLog is not None or objFLog is not None:
                 if it == 0 or L_is_given:
-                    f_x_loc = self._f(x) if not self._gradf_take_cache else self._f(x)[0]
+                    f_x_loc = self._f(x)[0]
                     g_x_loc = self._g(x) if objLog is not None else 0.0
                 else:
                     f_x_loc = f_x
@@ -306,7 +306,7 @@ class FISTA:
             if objLog_inexact is not None or objFLog_inexact is not None:
                 g_y_loc = self._g(y) if objLog_inexact is not None else 0.0
                 if it == 0:
-                    f_y_loc = self._f(y) if not self._gradf_take_cache else self._f(y)[0]
+                    f_y_loc = self._f(y)[0]
                 else:
                     f_y_loc = f_y
                 if objLog_inexact is not None:
@@ -404,39 +404,26 @@ class FISTA:
                 if not flagRestart:
                     if combinedCall:
                         f_y, gradf_y = self._f_gradf(y)
-                    elif not self._gradf_take_cache:
-                        f_y = self._f(y)
-                        gradf_y = self._gradf(y)
                     else:
                         f_y, cache = self._f(y)
                         gradf_y = self._gradf(y,cache)
                 else: # with momentum-restart feature
                     # evaluate f(y)
-                    if not self._gradf_take_cache:
-                        f_y = self._f(y)
-                    else:
-                        f_y, cache = self._f(y)
+                    f_y, cache = self._f(y)
 
                     # evaluate restart condition
                     if objCoeff*f_y > objFLog_inexact[-1]: # momentum-restart condition
                         t = 1
                         y = x_old
                         if not L_is_given: # means that 'f_x' and 'cache_fx_usedInNextIter' are in locals()
-                            f_y = f_x
-                            cache = cache_fx_usedInNextIter # using cache_fx_usedInNextIter from last iteration
+                            f_y, cache = f_x, cache_fx_usedInNextIter # using cache_fx_usedInNextIter from last iteration
                         else:
-                            if not self._gradf_take_cache:
-                                f_y = self._f(y)
-                            else:
-                                f_y, cache = self._f(y)
+                            f_y, cache = self._f(y)
                         if verbose:
                             to_print_momentum_restart_happend = True
 
                     # evaluate gradf(y)
-                    if not self._gradf_take_cache:
-                        gradf_y = self._gradf(y)
-                    else:
-                        gradf_y = self._gradf(y,cache)
+                    gradf_y = self._gradf(y,cache)
                 
 
                 ### Determining L and compute x = prox_L(y)
