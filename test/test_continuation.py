@@ -30,7 +30,7 @@ def test_run_0():
                    **Logs)
 
     # run 20 continued
-    fistaObj.solve(x_init=np.zeros(dims[1], dtype=np.float64), max_iter=10, L0=1.0, ls_red_coef=1.5, ls_inc_mode={'stopAtIter':0}, continuation=10,
+    fistaObj.solve(x_init=np.zeros(dims[1], dtype=np.float64), max_iter=10, L0=1.0, ls_red_coef=1.5, ls_inc_mode={'stopAtIter':0}, prevLastIter=10,
                    **Logs)
 
     # run 20 direct
