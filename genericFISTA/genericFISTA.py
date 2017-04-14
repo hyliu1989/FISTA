@@ -31,11 +31,10 @@ class mylist(list):
             self[idx] = None
 
 def initializeLogs(to_log_all_x, num_x=0):
-    """
-    Initialize logs to values we are interested in. Users must specify if to log x at all iterations (to_log_all_x)
+    """Initialize logs to values we are interested in. 
 
-    The returned object can be dereferenced in calling FISTA.solve
-    E.g. 
+    Users must specify if to log x at all iterations (to_log_all_x). The returned object is a dictionary 
+    and can be dereferenced in calling FISTA.solve. E.g. 
         logs = initializeLogs()
         fista_handle = FISTA(f, gradf, g, proxg)
         fista_handle.solve(x_init=something, **logs)
@@ -51,90 +50,6 @@ def initializeLogs(to_log_all_x, num_x=0):
                 tLog=[],
                 xLog=[] if to_log_all_x else mylist(num_x),
                 timeLog=[])
-
-
-def getPlotlyCallback(Logs_subset, x_inspections=[], charts_per_row=2):
-    """
-    A example callback function that will update the plotly offline plots showing 
-    any non-None elements in the dictionary Logs_subset.
-
-    x_inspections: a list of (name, callable) pairs that callables take x as the only argument and
-                   the return value of each callable is to make a chart.
-    """
-    import plotly.offline as py
-    import plotly.graph_objs as go
-    import plotly.tools as tls
-    from IPython.display import clear_output
-
-    assert py.offline.__PLOTLY_OFFLINE_INITIALIZED and tls._ipython_imported
-
-    scatter_objs_config = []
-    axis_cnt = 0
-
-    # count standard charts
-    toLog = lambda log_name: (log_name in Logs_subset.keys()) and (Logs_subset[log_name] is not None)
-    standardLogs =      ['objLog',    'objLog_inexact', 'objFLog',                  'objFLog_inexact']
-    standardLogTitles = ['objective', 'objective',      'smooth part of objective', 'smooth part of objective']
-    standardLogs +=      ['truthCompLog',    'LLog',       'tLog',      'timeLog'     ]
-    standardLogTitles += ['diff from truth', 'L (FISTA)',  't (FISTA)', 'elapsed time']
-    for log_name, title in zip(standardLogs,standardLogTitles):
-        if toLog(log_name):
-            axis_cnt += 1
-            if log_name is 'objLog_inexact' and toLog('objLog'):
-                axis_cnt -= 1 # plot in objLog's axis
-            if log_name is 'objFLog_inexact' and toLog('objFLog'):
-                axis_cnt -= 1 # plot in objFLog's axis
-            scatter_objs_config.append( dict(
-                title = title,
-                name  = log_name,
-                xaxis = 'x%d' % axis_cnt, 
-                yaxis = 'y%d' % axis_cnt,
-                record = Logs_subset[log_name],
-                record_need_update=False,
-                record_update_callable=None,
-                )
-            )
-    # count user specified charts
-    for name, inspection in x_inspections:
-        axis_cnt += 1
-        scatter_objs_config.append(dict(
-            title = name,
-            name  = name,
-            xaxis = 'x%d' % axis_cnt, 
-            yaxis = 'y%d' % axis_cnt,
-            record = [],
-            record_need_update=True,
-            record_update_callable=inspection,
-            )
-        )
-
-    if len(scatter_objs_config) == 0:
-        raise ValueError('Nothing to display')
-
-    # generate subplot figure object
-    numRows = (axis_cnt-1)//charts_per_row + 1
-    subplotTitles = [conf['title'] for conf in scatter_objs_config]
-    if subplotTitles.count('objective') == 2:
-        subplotTitles.remove('objective') # remove because they share the same axis
-    if subplotTitles.count('smooth part of objective') == 2:
-        subplotTitles.remove('smooth part of objective') # remove because they share the same axis
-    fig = tls.make_subplots(rows=numRows, cols=charts_per_row, subplot_titles=subplotTitles)
-    fig['layout'].update(width=900, height=360*numRows)
-    
-    # fill subplot object
-    for conf in scatter_objs_config:
-        fig['data'].append(go.Scatter(y=conf['record'], xaxis=conf['xaxis'], yaxis=conf['yaxis'], name=conf['name']))
-
-    def callback(x):
-        clear_output(wait=True)
-        for i, conf in enumerate(scatter_objs_config):
-            if conf['record_need_update']:
-                func = conf['record_update_callable']
-                conf['record'].append(func(x))
-        py.iplot(fig)
-
-    return callback
-
 
 
 
@@ -465,6 +380,88 @@ class FISTA:
 
 
 
+
+# FIXME: this does not work under the latest Jupyter notebook (2016/12)
+def getPlotlyCallback(Logs_subset, x_inspections=[], charts_per_row=2):
+    """Return a example callback function that will update the plotly offline plots showing 
+    any non-None elements in the dictionary Logs_subset.
+
+    x_inspections: a list of (name, callable) pairs that callables take x as the only argument and
+                   the return value of each callable is to make a chart.
+    """
+    import plotly.offline as py
+    import plotly.graph_objs as go
+    import plotly.tools as tls
+    from IPython.display import clear_output
+
+    assert py.offline.__PLOTLY_OFFLINE_INITIALIZED and tls._ipython_imported
+
+    scatter_objs_config = []
+    axis_cnt = 0
+
+    # count standard charts
+    toLog = lambda log_name: (log_name in Logs_subset.keys()) and (Logs_subset[log_name] is not None)
+    standardLogs =      ['objLog',    'objLog_inexact', 'objFLog',                  'objFLog_inexact']
+    standardLogTitles = ['objective', 'objective',      'smooth part of objective', 'smooth part of objective']
+    standardLogs +=      ['truthCompLog',    'LLog',       'tLog',      'timeLog'     ]
+    standardLogTitles += ['diff from truth', 'L (FISTA)',  't (FISTA)', 'elapsed time']
+    for log_name, title in zip(standardLogs,standardLogTitles):
+        if toLog(log_name):
+            axis_cnt += 1
+            if log_name is 'objLog_inexact' and toLog('objLog'):
+                axis_cnt -= 1 # plot in objLog's axis
+            if log_name is 'objFLog_inexact' and toLog('objFLog'):
+                axis_cnt -= 1 # plot in objFLog's axis
+            scatter_objs_config.append( dict(
+                title = title,
+                name  = log_name,
+                xaxis = 'x%d' % axis_cnt, 
+                yaxis = 'y%d' % axis_cnt,
+                record = Logs_subset[log_name],
+                record_need_update=False,
+                record_update_callable=None,
+                )
+            )
+    # count user specified charts
+    for name, inspection in x_inspections:
+        axis_cnt += 1
+        scatter_objs_config.append(dict(
+            title = name,
+            name  = name,
+            xaxis = 'x%d' % axis_cnt, 
+            yaxis = 'y%d' % axis_cnt,
+            record = [],
+            record_need_update=True,
+            record_update_callable=inspection,
+            )
+        )
+
+    if len(scatter_objs_config) == 0:
+        raise ValueError('Nothing to display')
+
+    # generate subplot figure object
+    numRows = (axis_cnt-1)//charts_per_row + 1
+    subplotTitles = [conf['title'] for conf in scatter_objs_config]
+    if subplotTitles.count('objective') == 2:
+        subplotTitles.remove('objective') # remove because they share the same axis
+    if subplotTitles.count('smooth part of objective') == 2:
+        subplotTitles.remove('smooth part of objective') # remove because they share the same axis
+    fig = tls.make_subplots(rows=numRows, cols=charts_per_row, subplot_titles=subplotTitles)
+    fig['layout'].update(width=900, height=360*numRows)
+    
+    # fill subplot object
+    for conf in scatter_objs_config:
+        fig['data'].append(go.Scatter(y=conf['record'], xaxis=conf['xaxis'], yaxis=conf['yaxis'], name=conf['name']))
+
+    def callback(x):
+        clear_output(wait=True)
+        for i, conf in enumerate(scatter_objs_config):
+            if conf['record_need_update']:
+                func = conf['record_update_callable']
+                conf['record'].append(func(x))
+        py.iplot(fig)
+
+    return callback
 
 
 
