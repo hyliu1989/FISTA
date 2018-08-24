@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Generic FISTA algorithm with optional restart and callback feature
+Accelerated proximal gradient descent algorithm with optional restart and callback feature
 
 Example callback are also provided with Plotly.
 
-Hsiou-Yuan Liu   hyliu@berkeley.edu
-Apr 15, 2017
+Hsiou-Yuan Liu   hyhliu1989@gmail.com
+Aug 23, 2018
 
 """
 from __future__ import division, print_function, with_statement
@@ -38,16 +38,17 @@ class mylist(list):
 
 
 def initializeLogs(to_log_all_x, num_x=0):
-    print('deprecated: use static method FISTA.getInitialLogs() instead')
-    return FISTA.getInitialLogs(to_log_all_x, num_x)
+    print('deprecated: use static method AcceleratedProximalGD.getInitialLogs() instead')
+    return AcceleratedProximalGD.getInitialLogs(to_log_all_x, num_x)
 
 
 ##################
 # Main algorithm #
 ##################
-class FISTA:
+class AcceleratedProximalGD:
     """
-    FISTA solver class to handle the procedures in each FISTA iterations
+    Accelerated proximal gradient descent solver extended from [1] to be able to handle non-l1 
+    regularizers.
 
     reference: 1. Amir Beck and Marc Teboulle
                   A Fast Iterative Shrinkage-Thresholding Algorithm for Linear Inverse Problems
@@ -67,10 +68,11 @@ class FISTA:
         Users must specify whether to log x for all iterations (to_log_all_x).
         If not, default is to keep the last two x (num_x=2).
 
-        It is recommended to dereference the returned dictionary when calling FISTA.solve. E.g.
-            logs = FISTA.getInitialLogs()
-            fista_handle = FISTA(f, gradf, g, proxg)
-            fista_handle.solve(x_init=something, **logs)
+        It is recommended to dereference the returned dictionary when calling AcceleratedProximalGD.solve. 
+        E.g.
+            logs = AcceleratedProximalGD.getInitialLogs()
+            solver = AcceleratedProximalGD(f, gradf, g, proxg)
+            solver.solve(x_init=something, **logs)
         """
         if not to_log_all_x and num_x <= 0:
             raise ValueError('num_x should be at least 1')
@@ -167,9 +169,10 @@ class FISTA:
               prevLastIter=None,
               ):
         """
-        Implementation of FISTA
+        Implementation of Accelerated Proximal Gradient Descent
 
-        Here I reorder the FISTA update (important for correctly logging) a little, such that
+        Starting from the FISTA paper, I make no assumption that the regularizer should be l1 and
+        I reorder the acceleration update (important for correctly logging) a little, such that
         in iteration k, there is no variable of subscript (k+1). The subscripbed value of each
         variable is still the same as that in the FISTA paper. Reordered as follows:
             t[k] = 0.5*( 1+sqrt(1+4*t[k-1]**2) )
@@ -180,7 +183,7 @@ class FISTA:
 
         Arguments:
             x_init:   initial point
-            max_iter:   maximum iteration for FISTA to run. If continuing previous run (i.e. prevLastIter is used),
+            max_iter:   maximum number of iterations to run. If continuing previous run (i.e. prevLastIter is used),
                         max_iter means how many extra iterations to run.
             verbose:   control whether to print standard output. This handle is decoupled from stepout print handle
             callback:   callback(x) where x is the estimation at current iteration.
@@ -208,7 +211,7 @@ class FISTA:
             truthCompCoeff:   value to multiply with the difference for logging. [Default=1.0]
                                Example of use, to normalize the difference.
             LLog:   logging L if not None
-            tLog:   logging t of FISTA iteration if not None
+            tLog:   logging t of acceleration iteration if not None
             xLog:   logging x if not None
             timeLog:   logging accumulated elapsed time (wall clock). This includes the time spent in logging
                        process, and it makes huge difference to evaluate extra f(x) when L is given.
@@ -244,8 +247,8 @@ class FISTA:
             else:
                 combinedCall = False
         else:  # with restart feature
-            assert tLog is not None, 'tLog is required for the restart of FISTA.'
-            assert objFLog_inexact is not None, 'objFLog_inexact is required for the restart of FISTA.'
+            assert tLog is not None, 'tLog is required for the restart of APGD.'
+            assert objFLog_inexact is not None, 'objFLog_inexact is required for the restart of APGD.'
             assert hasattr(self._f, '__call__')
             assert hasattr(self._gradf, '__call__')
 
@@ -333,7 +336,7 @@ class FISTA:
                     pass  # Good! Things matched
                 else:
                     if not flagRestart:
-                        print('previous run might have turned on flagRestart so the t is not a usual FISTA t at this iteration.')
+                        print('previous run might have turned on flagRestart so the t is not a usual APGD t at this iteration.')
                 # assert tLog[-1] == t  # comment out due to incompatibility to the restart feature
             if LLog is not None:
                 L = LLog[-1]
@@ -349,7 +352,7 @@ class FISTA:
                     print('iter % 4d: ' % it, end='')
                 to_print_momentum_restart_happend = False
 
-                #### ACTUAL FISTA PART
+                #### ACTUAL APGD PART
                 x_oldold = 0 if (it == 1) else x_old
                 x_old = x
                 t_old = t
@@ -432,9 +435,13 @@ class FISTA:
         objval = f_x if 'f_x' in locals() else f_y
         return x, objval
 
+FISTA = AcceleratedProximalGD
+
+
 
 
 try:
+    # FIXME: to update the plotly code such that it can be run with the latest plotly and jupyter notebook
     import plotly.graph_objs as go
     import plotly.tools as tls
     from . plotlyStream import JupyterNotebookPlotlyStream
@@ -469,8 +476,8 @@ try:
                 ('objFLog',         'smooth part of objective'),
                 ('objFLog_inexact', 'smooth part of objective'),
                 ('truthCompLog',    'diff from truth'),
-                ('LLog',            'L (FISTA)'),
-                ('tLog',            't (FISTA'),
+                ('LLog',            'L (APGD)'),
+                ('tLog',            't (APGD'),
                 ('timeLog',         'elapsed time'),
             ]
             for log_name, title in Log_name_title_pair:
@@ -599,7 +606,7 @@ try:
                     print('the specified name or title is not found')
 
         def __call__(self, x):
-            """A callback function to be called with FISTA.solve
+            """A callback function to be called with AcceleratedProximalGD.solve
             """
             ## Generate heatmap data
             for conf in self._go_configs:
@@ -650,8 +657,8 @@ def getPlotlyCallback(Logs_subset, x_inspections=[], charts_per_row=2):
         ('objFLog',         'smooth part of objective'),
         ('objFLog_inexact', 'smooth part of objective'),
         ('truthCompLog',    'diff from truth'),
-        ('LLog',            'L (FISTA)'),
-        ('tLog',            't (FISTA'),
+        ('LLog',            'L (APGD)'),
+        ('tLog',            't (APGD'),
         ('timeLog',         'elapsed time'), 
     ]
     for log_name, title in Log_name_title_pair:
