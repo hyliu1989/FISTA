@@ -84,7 +84,7 @@ class FISTA:
                     )
 
 
-    def __init__(self, f, gradf, g, proxg, gradf_take_cache=False, f_gradf=None, domain_justifier=None):
+    def __init__(self, f, gradf, g, proxg, gradf_take_cache=False, f_gradf=None, backend='cpu'):
         """
         Initializer
 
@@ -114,13 +114,10 @@ class FISTA:
             self._f = lambda x: (f(x), None)
             self._gradf = lambda x, cache: gradf(x)
 
-        self._domain_justifier = domain_justifier
 
     def _lineSearchProcedure(self, L, y, f_y, gradf_y):
         """Line search procedures specified in FISTA paper"""
         x   = self._proxg(1/L, y-1/L*gradf_y)
-        if self._domain_justifier is not None:
-            x[x<0] = 0  # FIXME
         g_x = self._g(x)
         QL  = f_y + (gradf_y.conj()*(x-y)).real.sum() + 0.5*L*np.linalg.norm(x-y)**2 + g_x  # Taylor expansion at y, evaluated at x
         f_x, cache_fx = self._f(x)
@@ -146,9 +143,6 @@ class FISTA:
               flagRestart=False,
               interruptionFilename=None,
               prevLastIter=None,
-
-              domain=False,  # FIXME: to have a general implementation of domain justifier. 
-                             # TODO: to find a theory of domain justifier
               ):
         """
         Implementation of FISTA
@@ -340,8 +334,6 @@ class FISTA:
                 t = 0.5*(1+np.sqrt(1+4*t_old**2))
                 y = x_old if (it == 1) else x_old + ((t_old-1)/t)*(x_old-x_oldold)
 
-                if self._domain_justifier is not None:
-                    y[y<0] = 0  # FIXME : hard-coded domain justification
 
                 ### evaluate f(y) and gradf(y), with optional momentum-restart feature
                 # Paper for momentum-restart: Adaptive Restart for Accelerated Gradient Schemes
