@@ -87,7 +87,7 @@ class FISTA:
                     )
 
 
-    def __init__(self, f, gradf, g, proxg, gradf_take_cache=False, f_gradf=None, backend='cpu'):
+    def __init__(self, f, gradf=None, g=(lambda x: 0.0), proxg=(lambda alpha,x: x), gradf_take_cache=False, f_gradf=None, backend='cpu'):
         """
         Initializer
 
@@ -107,14 +107,20 @@ class FISTA:
 
         """
         assert backend == 'cpu' or backend == 'gpu'
-        assert hasattr(f, '__call__') and hasattr(gradf, '__call__') and hasattr(g, '__call__') and hasattr(proxg, '__call__')
+        if gradf is None:
+            assert f_gradf is not None
+            self._mom_restart = False
+        else:
+            assert hasattr(f, '__call__') and hasattr(gradf, '__call__')
+            self._mom_restart = True
         self._f = f
         self._gradf = gradf
         self._f_gradf = f_gradf
         self._g = g
         self._proxg = proxg
-        #self._gradf_take_cache = gradf_take_cache
-        if not gradf_take_cache:  # unify the calling protocol to be always-take-cache
+        
+        # unify the calling protocol to be always-take-cache
+        if not gradf_take_cache:
             self._f = lambda x: (f(x), None)
             self._gradf = lambda x, cache: gradf(x)
 
