@@ -298,7 +298,7 @@ class AcceleratedProximalGD:
         # with restart feature
         if flagRestart:
             assert self._allow_mom_restart
-            if tLog not None:
+            if tLog is None:
                 tLog = []
                 print('tLog is required for the restart of APGD.')
             if objFLog_inexact is None:
