@@ -139,6 +139,7 @@ class AcceleratedProximalGD:
             self.__conj = af.conjg
             self.__sum = af.sum
 
+
     def _lineSearchProcedure(self, L, y, f_y, gradf_y):
         """Line search procedures specified in FISTA paper"""
         x   = self._proxg(1/L, y-1/L*gradf_y)
@@ -299,7 +300,7 @@ class AcceleratedProximalGD:
                 xLog.append(x)
 
             if timeLog is not None:
-                timeLog.append(0.0 if it == 0 else timer.elapsed)
+                timeLog.append(timer.elapsed)
                 to_print += 'time:%.1f| ' % timeLog[-1]
 
             if verbose:
@@ -309,42 +310,42 @@ class AcceleratedProximalGD:
                 callback(x)
 
 
-        if prevLastIter is None:
-            ## new start
-            ## zeroth iteration, prepartion work
-            it = 0
-            if ls_to_print:
-                print('='*15, 'initialize', it, '='*15)
-            elif verbose:
-                print('initialize ', end='')
-            x = x_init
-            y = x_init
-            t = 0
-            Logging()
-            it_beg = 1
-        else:
-            ## resume from previous run
-            ## resuming preparation
-            assert prevLastIter > 1
-            x_old = xLog[-2]
-            x = xLog[-1]
-            t = 0
-            for _ in range(prevLastIter):
-                t = 0.5*(1+np.sqrt(1+4*t**2))
-            if tLog is not None:
-                if tLog[-1] == t:
-                    pass  # Good! Things matched
-                else:
-                    if not flagRestart:
-                        print('previous run might have turned on flagRestart so the t is not a usual APGD t at this iteration.')
-                # assert tLog[-1] == t  # comment out due to incompatibility to the restart feature
-            if LLog is not None:
-                L = LLog[-1]
-            it_beg = prevLastIter+1
-            print('resume previous run with extra max_iter(%d) runs' % max_iter)
-
-
         with contexttimer.Timer() as timer:
+            if prevLastIter is None:
+                ## new start
+                ## zeroth iteration, prepartion work
+                it = 0
+                if ls_to_print:
+                    print('='*15, 'initialize', it, '='*15)
+                elif verbose:
+                    print('initialize ', end='')
+                x = x_init
+                y = x_init
+                t = 0
+                Logging()
+                it_beg = 1
+            else:
+                ## resume from previous run
+                ## resuming preparation
+                assert prevLastIter > 1
+                x_old = xLog[-2]
+                x = xLog[-1]
+                t = 0
+                for _ in range(prevLastIter):
+                    t = 0.5*(1+np.sqrt(1+4*t**2))
+                if tLog is not None:
+                    if tLog[-1] == t:
+                        pass  # Good! Things matched
+                    else:
+                        if not flagRestart:
+                            print('previous run might have turned on flagRestart so the t is not a usual APGD t at this iteration.')
+                    # assert tLog[-1] == t  # comment out due to incompatibility to the restart feature
+                if LLog is not None:
+                    L = LLog[-1]
+                it_beg = prevLastIter+1
+                print('resume previous run with extra max_iter(%d) runs' % max_iter)
+
+
             for it in range(it_beg, it_beg + max_iter):
                 if ls_to_print:
                     print('='*15, 'iter', it, '='*15)
