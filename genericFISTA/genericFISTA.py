@@ -50,7 +50,7 @@ class FISTA:
                   A Fast Iterative Shrinkage-Thresholding Algorithm for Linear Inverse Problems
                   SIAM J. Imaging Sci., 2(1), 183–202. http://epubs.siam.org/doi/abs/10.1137/080716542
                2. Brendan O’Donoghue and Emmanuel Candes
-                  Adaptive Restart for Accelerated Gradient Schemes 
+                  Adaptive Restart for Accelerated Gradient Schemes
                   https://statweb.stanford.edu/~candes/papers/adap_restart_paper.pdf
     """
 
@@ -58,7 +58,7 @@ class FISTA:
     def getInitialLogs(to_log_all_x, num_x=2):
         """Get a dictionary containing all the logs that the main algorithm can record.
 
-        Default objLog, objFLog, truthCompLog and tLog are deabled. To enable, simply set the key 
+        Default objLog, objFLog, truthCompLog and tLog are deabled. To enable, simply set the key
         to an empty list.
 
         Users must specify whether to log x for all iterations (to_log_all_x).
@@ -134,7 +134,7 @@ class FISTA:
 
               objLog=None, objLog_inexact=None, objCoeff=1.0,
               objFLog=None, objFLog_inexact=None,
-              truthCompLog=None, truth=None, truthCompMethod=lambda x,tr:np.linalg.norm(x-tr), truthCompCoeff=1.0,
+              truthCompLog=None, truth=None, truthCompMethod=(lambda x,tr:np.linalg.norm(x-tr)), truthCompCoeff=1.0,
               LLog=None,
               tLog=None,
               xLog=None,
@@ -158,7 +158,8 @@ class FISTA:
 
         Arguments:
             x_init:   initial point
-            max_iter:   maximum iteration for FISTA to run
+            max_iter:   maximum iteration for FISTA to run. If continuing previous run (i.e. prevLastIter is used),
+                        max_iter means how many extra iterations to run.
             verbose:   control whether to print standard output. This handle is decoupled from stepout print handle
             callback:   callback(x) where x is the estimation at current iteration.
             L:   Lipschitz constant. If not given, line search will be performed.
@@ -187,7 +188,7 @@ class FISTA:
             LLog:   logging L if not None
             tLog:   logging t of FISTA iteration if not None
             xLog:   logging x if not None
-            timeLog:   logging accumulated elapsed time (wall clock). This includes the time spent in logging 
+            timeLog:   logging accumulated elapsed time (wall clock). This includes the time spent in logging
                        process, and it makes huge difference to evaluate extra f(x) when L is given.
 
             [abortion/continuation]
@@ -240,7 +241,7 @@ class FISTA:
                 if objLog is not None:
                     objLog.append(  objCoeff*(f_x_loc+g_x_loc) )
                     to_print += 'obj:%.4e| ' % objLog[-1]
-                if objFLog is not None: 
+                if objFLog is not None:
                     objFLog.append( objCoeff*(f_x_loc) )
                     to_print += 'smooth obj:%.4e| ' % objFLog[-1]
 
@@ -280,7 +281,7 @@ class FISTA:
                 print(to_print, flush=True)
 
             if callback is not None:
-                    callback(x)
+                callback(x)
 
 
         if prevLastIter is None:
@@ -336,25 +337,25 @@ class FISTA:
 
 
                 ### evaluate f(y) and gradf(y), with optional momentum-restart feature
-                # Paper for momentum-restart: Adaptive Restart for Accelerated Gradient Schemes
-                # (https://statweb.stanford.edu/~candes/papers/adap_restart_paper.pdf)
-                # Flow without momentum-restart
-                #     f_y = f(y)
-                #     gradf_y = gradf(y)
-                # Flow with momentum-restart
-                #     f_y = f(y)
-                #     if f_y > f(y_old): # yes, it's f(y_old), not f(x_old), which is different from the paper
-                #          y = x_old
-                #          f_y = f(y)
                 if not flagRestart:
+                    # Flow without momentum-restart
+                    #     f_y = f(y)
+                    #     gradf_y = gradf(y)
                     if combinedCall:
                         f_y, gradf_y = self._f_gradf(y)
                     else:
                         f_y, cache = self._f(y)
                         gradf_y = self._gradf(y, cache)
+
                 else:  # with momentum-restart feature
-                    # evaluate f(y)
-                    f_y, cache = self._f(y)
+                    # Paper for momentum-restart: Adaptive Restart for Accelerated Gradient Schemes
+                    # (https://statweb.stanford.edu/~candes/papers/adap_restart_paper.pdf)
+                    # Flow with momentum-restart
+                    #     f_y = f(y)
+                    #     if f_y > f(y_old): # yes, it's f(y_old), not f(x_old), which is different from the paper
+                    #          y = x_old
+                    #          f_y = f(y)
+                    f_y, cache = self._f(y)  # evaluate f(y)
 
                     # evaluate restart condition
                     if objCoeff*f_y > objFLog_inexact[-1]:  # momentum-restart condition
@@ -392,10 +393,10 @@ class FISTA:
                                 print('increasing step size: QL_try=%.8E, Fx_try=%.8E, L_try=%.4E' % (QL_try, Fx_try, L_try), end='')
                             if passed:
                                 L, x, g_x, QL, f_x, Fx = L_try, x_try, g_x_try, QL_try, f_x_try, Fx_try  # assign variables for Logging()
-                                if ls_to_print: 
+                                if ls_to_print:
                                     print('')
                             else:
-                                if ls_to_print: 
+                                if ls_to_print:
                                     print(' (break! use previous L)')
                                 break
 
@@ -408,6 +409,7 @@ class FISTA:
         # return handling
         objval = f_x if 'f_x' in locals() else f_y
         return x, objval
+
 
 
 try:
