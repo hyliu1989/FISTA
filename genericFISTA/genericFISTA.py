@@ -12,7 +12,10 @@ from __future__ import division, print_function, with_statement
 import numpy as np
 import contexttimer
 from os.path import exists
-
+try:
+    import arrayfire as af
+except:
+    af = None
 
 ###########
 # Utility #
@@ -103,6 +106,7 @@ class FISTA:
                          See important note of g(x). In the example, this proxg computes argmin_y alpha*mu*||x||_1 + 0.5||y-x||_2^2
 
         """
+        assert backend == 'cpu' or backend == 'gpu'
         assert hasattr(f, '__call__') and hasattr(gradf, '__call__') and hasattr(g, '__call__') and hasattr(proxg, '__call__')
         self._f = f
         self._gradf = gradf
@@ -114,12 +118,24 @@ class FISTA:
             self._f = lambda x: (f(x), None)
             self._gradf = lambda x, cache: gradf(x)
 
+        if backend == 'cpu' or af is None:
+            if backend == 'gpu' and af is None:
+                print('gpu backend is not supported (missing package arrayfire)!')
+            self.__norm = np.linalg.norm
+            self.__real = np.real
+            self.__conj = np.conj
+            self.__sum = np.sum
+        else:
+            self.__norm = af.norm
+            self.__real = af.real
+            self.__conj = af.conjg
+            self.__sum = af.sum
 
     def _lineSearchProcedure(self, L, y, f_y, gradf_y):
         """Line search procedures specified in FISTA paper"""
         x   = self._proxg(1/L, y-1/L*gradf_y)
         g_x = self._g(x)
-        QL  = f_y + (gradf_y.conj()*(x-y)).real.sum() + 0.5*L*np.linalg.norm(x-y)**2 + g_x  # Taylor expansion at y, evaluated at x
+        QL  = f_y + self.__sum(self.__real((self.__conj(gradf_y)*(x-y)))) + 0.5*L*self.__norm(x-y)**2 + g_x  # Taylor expansion at y, evaluated at x
         f_x, cache_fx = self._f(x)
         Fx  = f_x + g_x
         passed = Fx <= QL
