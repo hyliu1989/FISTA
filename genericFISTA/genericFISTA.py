@@ -89,42 +89,96 @@ class AcceleratedProximalGD:
                     )
 
 
-    def __init__(self, f, gradf=None, g=(lambda x: 0.0), proxg=(lambda alpha,x: x), gradf_take_cache=False, f_gradf=None, backend='cpu'):
+    def __init__(self, f=None, gradf=None, g=(lambda x: 0.0), proxg=(lambda alpha,x: x), gradf_take_cache=False, 
+                 f_gradf=None, 
+                 backend='cpu'):
         """
         Initializer
 
-        f(x): the smooth part of the objective function to be minimized.
+        For explanation purpose, let the value of the target function at x be f_x and the corresponding gradient gradf_x.
+
+        Way 1: supply function `f_gradf(x, to_compute_grad)`
+            f_gradf(x,False) returns f_x
+            f_gradf(x, True) returns a tuple (f_x, gradf_x)
+
+        Way 2: supply functions `f`, `gradf` and a flag `gradf_take_cache`
+            if not gradf_take_cache, then
+                f(x)     returns f_x
+                gradf(x) returns gradf_x
+            if gradf_take_cache, then
+                f(x)           returns a tuple (f_x, cache)
+                gradf(x,cache) returns gradf_x
+
+        f(x):  The smooth part of the objective function to be minimized.
               Returns a float number if gradf_take_cache==False, otherwise (float, cache)
-        gradf(x) or gradf(x, cache):
-              The gradient of f
+        
+        gradf(x) or gradf(x, cache):  The gradient of f
               Returns an array of the shape of x
-        f_gradf: the combined function which returns (f(x), gradf(x)) as a tuple
+        
+        f_gradf(x,to_compute_grad):  The combined function which returns f(x) or a tuple (f(x), gradf(x))
 
         g(x): the other part of the objective function, whose proximal operator is cheap to compute
-              IMPORTANT NOTE: g itself should contain a regularization parameter. E.g. if using L1 norm to regularize,
+              IMPORTANT NOTE: g itself should contain a regularization parameter. E.g. if using L1 norm 
+                              to regularize, the mu in the following expression is part of g
+                              
                               g(x) = mu*||x||_1
-        proxg(alpha, x): the proximal operator of g, which returns argmin alpha*g(y) + 0.5||y-x||_2^2
-                                                                      y
-                         See important note of g(x). In the example, this proxg computes argmin_y alpha*mu*||x||_1 + 0.5||y-x||_2^2
+
+        proxg(alpha, x): the proximal operator of g, which returns 
+
+                         argmin_y alpha*g(y) + 0.5||y-x||_2^2.
+                         
+                         See important note of g(x); in that example, the proxg computes 
+
+                         argmin_y alpha*mu*||x||_1 + 0.5||y-x||_2^2.
 
         """
         assert backend == 'cpu' or backend == 'gpu'
-        if gradf is None:
-            assert f_gradf is not None
-            self._mom_restart = False
-        else:
+
+        ## parse f, gradf and f_gradf and make them have the following signature
+        ##    f(x)       -> (f_x, cache)
+        ##    g(x,cache) -> gradf_x
+        ##    f_gradf(x) -> (f_x, gradf_x)
+
+        # backward compatibility maintaining
+        import inspect
+        if f_gradf is not None and len(inspect.signature(f_gradf).parameters) == 1:
+            # this is an old signature for f_gradf
+            from warnings import warn
+            warn(DeprecationWarning('signature of `f_gradf` has changed to have an extra flag `to_compute_grad`, '
+                                    'please update your codes accordingly'))
+            assert hasattr(f, '__call__')
+            self._allow_mom_restart = False
+            self._f       = f
+            self._gradf   = None
+            self._f_gradf = f_gradf
+        # way 2
+        elif f is not None and gradf is not None:
             assert hasattr(f, '__call__') and hasattr(gradf, '__call__')
-            self._mom_restart = True
-        self._f = f
-        self._gradf = gradf
-        self._f_gradf = f_gradf
+            self._allow_mom_restart = True
+            if gradf_take_cache:
+                def _f_gradf(x):
+                    f_x, cache = f(x)
+                    gradf_x = gradf(x,cache)
+                    return f_x, gradf_x
+                self._f       = f
+                self._gradf   = gradf
+                self._f_gradf = _f_gradf
+            else:
+                # unify the calling protocol to be always-take-cache
+                self._f       = lambda x: (f(x), None)
+                self._gradf   = lambda x,cache: gradf(x)
+                self._f_gradf = lambda x: (f(x), gradf(x))
+        # way 1
+        else:
+            assert f_gradf is not None
+            self._allow_mom_restart = False
+            self._f       = lambda x: (f_gradf(x,False), None)
+            self._gradf   = None
+            self._f_gradf = lambda x: f_gradf(x,True)
+
+        self._init_args = {'f':f, 'gradf':gradf, 'f_gradf':f_gradf, 'g':g, 'proxg':proxg}
         self._g = g
         self._proxg = proxg
-        
-        # unify the calling protocol to be always-take-cache
-        if not gradf_take_cache:
-            self._f = lambda x: (f(x), None)
-            self._gradf = lambda x, cache: gradf(x)
 
         if backend == 'cpu' or af is None:
             if backend == 'gpu' and af is None:
@@ -241,17 +295,15 @@ class AcceleratedProximalGD:
         if max_iter == 0:
             raise ValueError('max_iter cannot be zero')
 
-        if not flagRestart:
-            if hasattr(self._f_gradf, '__call__'):
-                combinedCall = True
-                print('Using the combined call for f and gradf')
-            else:
-                combinedCall = False
-        else:  # with restart feature
-            assert tLog is not None, 'tLog is required for the restart of APGD.'
-            assert objFLog_inexact is not None, 'objFLog_inexact is required for the restart of APGD.'
-            assert hasattr(self._f, '__call__')
-            assert hasattr(self._gradf, '__call__')
+        # with restart feature
+        if flagRestart:
+            assert self._allow_mom_restart
+            if tLog not None:
+                tLog = []
+                print('tLog is required for the restart of APGD.')
+            if objFLog_inexact is None:
+                objFLog_inexact = []
+                print('objFLog_inexact is required for the restart of APGD.')
 
 
         def Logging():
@@ -367,11 +419,7 @@ class AcceleratedProximalGD:
                     # Flow without momentum-restart
                     #     f_y = f(y)
                     #     gradf_y = gradf(y)
-                    if combinedCall:
-                        f_y, gradf_y = self._f_gradf(y)
-                    else:
-                        f_y, cache = self._f(y)
-                        gradf_y = self._gradf(y, cache)
+                    f_y, gradf_y = self._f_gradf(y)
 
                 else:  # with momentum-restart feature
                     # Paper for momentum-restart: Adaptive Restart for Accelerated Gradient Schemes
